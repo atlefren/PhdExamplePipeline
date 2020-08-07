@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <TargetFramework>netcoreapp3.1</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="GeometryDiff" Version="2.0.1" />
+    <PackageReference Include="JsonDiffPatch.Net" Version="2.2.0" />
+    <PackageReference Include="NetTopologySuite" Version="1.15.3" />
+  </ItemGroup>
+
+</Project>
