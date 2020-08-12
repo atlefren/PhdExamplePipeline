@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using FakeItEasy;
+using GeoAPI.Geometries;
 using NetTopologySuite.Geometries;
 using NetTopologySuite.IO;
 using NUnit.Framework;
@@ -86,27 +87,28 @@ namespace Tests
                 Operation = Operation.Create,
                 Version = 1
             };
-
+            var feature = new Feature<LineString, ExampleAttributes>()
+            {
+                Geometry = GetLineString(),
+                Attributes = new ExampleAttributes()
+                {
+                    Id = 1,
+                    Name = "feature 1"
+                }
+            };
             A.CallTo(() => _eventSourceApi.GetAggregateAtLatestVersion(A<Guid>.That.IsEqualTo(@event.AggregateId)))
                 .Returns(new Aggregate<Feature<LineString, ExampleAttributes>>()
                 {
                     Id = @event.AggregateId,
                     Version = @event.Version,
-                    Data = new Feature<LineString, ExampleAttributes>()
-                    {
-                        Geometry = GetLineString(),
-                        Attributes = new ExampleAttributes()
-                        {
-                            Id = 1,
-                            Name = "feature 1"
-                        }
-                    }
+                    Data = feature
+                
                 });
 
             await handler.Update(_datasetId, @event);
 
             A.CallTo(() => _databaseEngine.Upsert(_datasetId.ToString(),
-                    A<IEnumerable<Cell>>.That.Matches((cells => CheckCells(cells, @event.AggregateId))))
+                    A<IEnumerable<Cell>>.That.Matches((cells => CheckCells(cells, @event.AggregateId, feature))))
                     )
                 .MustHaveHappenedOnceExactly();
         }
@@ -122,60 +124,114 @@ namespace Tests
                 Version = 1
             };
 
+            var feature = new Feature<LineString, ExampleAttributes>()
+            {
+                Geometry = GetLineString(),
+                Attributes = new ExampleAttributes()
+                {
+                    Id = 1,
+                    Name = "feature 1"
+                }
+            };
             A.CallTo(() => _eventSourceApi.GetAggregateAtLatestVersion(A<Guid>.That.IsEqualTo(@event.AggregateId)))
                 .Returns(new Aggregate<Feature<LineString, ExampleAttributes>>()
                 {
                     Id = @event.AggregateId,
                     Version = @event.Version,
-                    Data = new Feature<LineString, ExampleAttributes>()
-                    {
-                        Geometry = GetLineString(),
-                        Attributes = new ExampleAttributes()
-                        {
-                            Id = 1,
-                            Name = "feature 1"
-                        }
-                    }
+                    Data = feature
                 });
 
             await handler.Update(_datasetId, @event);
 
             A.CallTo(() => _databaseEngine.Upsert(_datasetId.ToString(),
-                    A<IEnumerable<Cell>>.That.Matches((cells => CheckCells(cells, @event.AggregateId))))
+                    A<IEnumerable<Cell>>.That.Matches((cells => CheckCells(cells, @event.AggregateId, feature))))
                 )
                 .MustHaveHappenedOnceExactly();
         }
 
-        private LineString GetLineString()
+        [Test]
+        public async Task TestModifyWithTransform()
+        {
+            var transform = A.Fake<Func<Feature<LineString, ExampleAttributes>, Feature<LineString, ExampleAttributes>>>();
+            
+            var handler = new ReadProjectionHandler<LineString, ExampleAttributes>(_databaseEngine, _eventSourceApi, transform);
+            var @event = new Event()
+            {
+                AggregateId = Guid.NewGuid(),
+                Operation = Operation.Modify,
+                Version = 1
+            };
+            var feature = new Feature<LineString, ExampleAttributes>()
+            {
+                Geometry = GetLineString(),
+                Attributes = new ExampleAttributes()
+                {
+                    Id = 1,
+                    Name = "feature 1"
+                }
+            };
+
+            var transformedFeature = new Feature<LineString, ExampleAttributes>()
+            {
+                Geometry = GetLineString("LINESTRING(1 1, 2 2)"),
+                Attributes = new ExampleAttributes()
+                {
+                    Id = 1,
+                    Name = "name transformed"
+                }
+            };
+
+            A.CallTo(() => transform(A<Feature<LineString, ExampleAttributes>>._))
+                .Returns(transformedFeature);
+
+            A.CallTo(() => _eventSourceApi.GetAggregateAtLatestVersion(A<Guid>.That.IsEqualTo(@event.AggregateId)))
+                .Returns(new Aggregate<Feature<LineString, ExampleAttributes>>()
+                {
+                    Id = @event.AggregateId,
+                    Version = @event.Version,
+                    Data = feature
+                });
+
+            await handler.Update(_datasetId, @event);
+
+            A.CallTo(() => _databaseEngine.Upsert(_datasetId.ToString(),
+                    A<IEnumerable<Cell>>.That.Matches((cells => CheckCells(cells, @event.AggregateId, transformedFeature))))
+                )
+                .MustHaveHappenedOnceExactly();
+        }
+
+
+
+        private static LineString GetLineString(string wkt = "LINESTRING(1 1, 2 2, 3 3)")
         {
             var reader = new WKTReader();
-            var ls = (LineString) reader.Read("LINESTRING(1 1, 2 2, 3 3)");
+            var ls = (LineString) reader.Read(wkt);
             ls.SRID = 4326;
             return ls;
         }
 
-        private  bool CheckCells(IEnumerable<Cell> c, Guid id)
+        private  bool CheckCells(IEnumerable<Cell> c, Guid aggregateId, Feature<LineString, ExampleAttributes> feature)
         {
             var cells = c.ToList();
             Assert.AreEqual(4, cells.Count);
             Assert.AreEqual("AggregateId", cells[0].Key);
-            Assert.AreEqual(id, cells[0].Value);
+            Assert.AreEqual(aggregateId, cells[0].Value);
             
             Assert.AreEqual("Geometry", cells[1].Key);
 
             var readGeom = new WKBReader().Read((byte[]) cells[1].Value);
-
-
-            Assert.AreEqual(GetLineString(), readGeom);
+            Assert.AreEqual(feature.Geometry, readGeom);
             Assert.AreEqual(4326, readGeom.SRID);
 
             Assert.AreEqual("Id", cells[2].Key);
-            Assert.AreEqual(1, cells[2].Value);
+            Assert.AreEqual(feature.Attributes.Id, cells[2].Value);
 
             Assert.AreEqual("Name", cells[3].Key);
-            Assert.AreEqual("feature 1", cells[3].Value);
+            Assert.AreEqual(feature.Attributes.Name, cells[3].Value);
 
             return true;
         }
+
+
     }
 }
