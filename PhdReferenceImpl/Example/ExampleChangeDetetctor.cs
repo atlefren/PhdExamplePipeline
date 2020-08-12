@@ -8,6 +8,11 @@ using PhdReferenceImpl.Models;
 
 namespace PhdReferenceImpl.Example
 {
+    /*
+     * Example implementation of IChangeDetector.
+     *
+     * This example assumes consistent object ids, and is thus a simplification.
+     */
     public class ExampleChangeDetetctor : IChangeDetector<LineString, ExampleAttributes>
     {
 
@@ -20,7 +25,6 @@ namespace PhdReferenceImpl.Example
             return Task.FromResult(GetDeleted(existingAggregates, newObjectIds)
                 .Concat(GetCreated(newVersion.Features, oldObjectIds))
                 .Concat(GetModified(existingAggregates, newVersion.Features, newObjectIds, oldObjectIds)));
-
         }
        
         private IEnumerable<FeaturePair<LineString, ExampleAttributes>> GetModified(IEnumerable<Aggregate<Feature<LineString, ExampleAttributes>>> existingAggregates, IEnumerable<Feature<LineString, ExampleAttributes>> newFeatures, IEnumerable<int> newIds, IEnumerable<int> oldIds)

@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using GeoAPI.Geometries;
 using GeomDiff;
@@ -8,6 +9,14 @@ using PhdReferenceImpl.Models;
 
 namespace PhdReferenceImpl.FeatureDiffer
 {
+    /*
+     * Implementation of a diffing mechanism for geospatial vector features.
+     * Uses a combination of GeomDiff for geometries and JsonDiffPatch for attributes.
+     *
+     * For more information on GeomDiff and this combination, see
+     * A. F. Sveen, ‘GeomDiff — an algorithm for differential geospatial vector data comparison’,
+     * Open Geospatial Data, Software and Standards, vol. 5, no. 1, pp. 1–11, Jul. 2020, doi: 10.1186/s40965-020-00076-4. 
+     */
     public class FeatureDiffer<TGeometry, TAttributes>:  IFeatureDiffer<TGeometry, TAttributes>
         where TGeometry : IGeometry
     {
@@ -21,27 +30,31 @@ namespace PhdReferenceImpl.FeatureDiffer
         private FeatureDiff<TGeometry, TAttributes> CreateDiff(FeaturePair<TGeometry, TAttributes> pair)
             => new FeatureDiff<TGeometry, TAttributes>()
             {
-                Guid = pair.Guid,
+                AggregateId = pair.Guid,
                 Version = pair.Version,
                 Attributes = DiffAttributes(pair),
                 Geometry = DiffGeometry(pair)
             };
 
         private string DiffAttributes(FeaturePair<TGeometry, TAttributes> pair)
-        {
-            if (pair.ExistingAggregate == null)
-            {
-                return ToJson(pair.NewFeature.Attributes);
-            }
+            => GetOperation(pair) switch
+                {
+                    Operation.Modify => _diffPatch.Diff(
+                        ToJson(pair.ExistingAggregate.Data.Attributes),
+                        ToJson(pair.NewFeature.Attributes)
+                    ),
+                    Operation.Create => ToJson(pair.NewFeature.Attributes),
+                    Operation.Delete => "",
+                    _ => throw new ArgumentOutOfRangeException()
+            };
 
-            if (pair.NewFeature == null)
-            {
-                return "";
-            }
-
-            return _diffPatch.Diff(ToJson(pair.ExistingAggregate.Data.Attributes), ToJson(pair.NewFeature.Attributes));
-        }
-
+        private static Operation GetOperation(FeaturePair<TGeometry, TAttributes> pair)
+            => pair.ExistingAggregate == null 
+                ? Operation.Create 
+                : pair.NewFeature == null 
+                    ? Operation.Delete 
+                    : Operation.Modify;
+        
         private static byte[] DiffGeometry(FeaturePair<TGeometry, TAttributes> pair)
             => GeometryDifferBinary.Diff(
                 pair.ExistingAggregate != null ? pair.ExistingAggregate.Data.Geometry : default, 
@@ -50,9 +63,6 @@ namespace PhdReferenceImpl.FeatureDiffer
         
         private static string ToJson(TAttributes attributes)
             => JsonConvert.SerializeObject(attributes);
-
-        private static TAttributes FromJson(string attributesJson)
-            => JsonConvert.DeserializeObject<TAttributes>(attributesJson);
 
         private static bool IsNotNoop(FeaturePair<TGeometry, TAttributes> pair)
             => pair.Operation != Operation.NoOp;

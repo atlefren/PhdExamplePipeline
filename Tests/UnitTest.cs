@@ -14,7 +14,9 @@ using PhdReferenceImpl.EventSourceApi;
 using PhdReferenceImpl.EventSourcePipeline;
 using PhdReferenceImpl.Example;
 using PhdReferenceImpl.FeatureDiffer;
+using PhdReferenceImpl.MessageBus;
 using PhdReferenceImpl.Models;
+using PhdReferenceImpl.ReadProjectionHandler;
 
 namespace Tests
 {
@@ -22,11 +24,13 @@ namespace Tests
     {
         private readonly ExampleChangeDetetctor _changeDetector = new ExampleChangeDetetctor();
         private IEventSourceApi<LineString, ExampleAttributes> _eventSourceApi;
+        private IMessageBus _messageBus;
+        private IReadProjectionHandler _readProjectionHandler;
         private EventSourcePipeline<LineString, ExampleAttributes> _pipeline;
         private Dataset<LineString, ExampleAttributes> _version1;
         private Dataset<LineString, ExampleAttributes> _version2;
 
-        private readonly Guid _datsetId = new Guid();
+        private readonly Guid _datsetId = Guid.NewGuid();
 
         [SetUp]
         public void Setup()
@@ -34,11 +38,13 @@ namespace Tests
             _version1 = GetVersion1(_datsetId);
             _version2 = GetVersion2(_datsetId);
             _eventSourceApi = A.Fake<IEventSourceApi<LineString, ExampleAttributes>>();
-            _pipeline = new EventSourcePipeline<LineString, ExampleAttributes>(_changeDetector, _eventSourceApi, new FeatureDiffer<LineString, ExampleAttributes>());
+            _readProjectionHandler = A.Fake<IReadProjectionHandler>();
+            _messageBus = new MessageBus();
+            _pipeline = new EventSourcePipeline<LineString, ExampleAttributes>(_changeDetector, _eventSourceApi, new FeatureDiffer<LineString, ExampleAttributes>(), _messageBus, _readProjectionHandler);
         }
 
         [Test]
-        public async Task TestVersion1()
+        public async Task TestWriteVersion1ToEventStore()
         {
             A.CallTo(() => _eventSourceApi.GetDatasetAtLatestVersion(A<Guid>.That.IsEqualTo(_datsetId))).Returns(
                  new List<Aggregate<Feature<LineString, ExampleAttributes>>>()
@@ -54,7 +60,7 @@ namespace Tests
         }
 
         [Test]
-        public async Task TestVersion2()
+        public async Task TestWriteVersion2ToEventStore()
         {
             A.CallTo(() => _eventSourceApi.GetDatasetAtLatestVersion(A<Guid>.That.IsEqualTo(_datsetId))).Returns(
                 _version1.Features.Select(f => new Aggregate<Feature<LineString, ExampleAttributes>>()
@@ -74,6 +80,21 @@ namespace Tests
             Assert.AreEqual(6, events.Count());
         }
 
+        [Test]
+        public async Task TestReadProjectionEventListener()
+        {
+            await _pipeline.CreateReadProjection(_datsetId);
+
+            await _pipeline.UpdateDataset(_version1);
+
+            A.CallTo(() =>
+                    _readProjectionHandler.EnsureTable(
+                        A<Guid>.That.IsEqualTo(_datsetId)))
+                .MustHaveHappenedOnceExactly();
+
+            A.CallTo(() => _readProjectionHandler.Update(A<Guid>.That.IsEqualTo(_datsetId), A<Event>._))
+                .MustHaveHappenedANumberOfTimesMatching(n => n == _version1.Features.Count);
+        }
 
         private static Dataset<LineString, ExampleAttributes> GetVersion1(Guid id)
             => new Dataset<LineString, ExampleAttributes>()
