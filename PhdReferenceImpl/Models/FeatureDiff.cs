@@ -1,12 +1,8 @@
-﻿
-using GeoAPI.Geometries;
-
-namespace PhdReferenceImpl.Models
+﻿namespace PhdReferenceImpl.Models
 {
-    public class FeatureDiff<TGeometry, TAttributes> : Event where TGeometry : IGeometry 
+    public class FeatureDiff
     {
-        public string Attributes { get; set; }
-        public byte[] Geometry { get; set; }
-       
+        public string AttributeDiff { get; set; }
+        public byte[] GeometryDiff { get; set; }
     }
 }

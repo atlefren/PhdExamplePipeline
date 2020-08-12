@@ -16,15 +16,17 @@ namespace PhdReferenceImpl.Example
     public class ExampleChangeDetetctor : IChangeDetector<LineString, ExampleAttributes>
     {
 
-        public  Task<IEnumerable<FeaturePair<LineString, ExampleAttributes>>> FindChanges(IEnumerable<Aggregate<Feature<LineString, ExampleAttributes>>> existingVersion, Dataset<LineString, ExampleAttributes> newVersion)
+        public  Task<IEnumerable<FeaturePair<LineString, ExampleAttributes>>> FindChanges(IEnumerable<Aggregate<Feature<LineString, ExampleAttributes>>> existingVersion, IEnumerable<Feature<LineString, ExampleAttributes>> newVersion)
         {
-            var existingAggregates = existingVersion.ToArray();
+            var newFeatures = newVersion.ToList();
+            var existingAggregates = existingVersion.ToList();
             var oldObjectIds = existingAggregates.Select(f => f.Data.Attributes.Id).ToList();
-            var newObjectIds = newVersion.Features.Select(f => f.Attributes.Id).ToList();
+           
+            var newObjectIds = newFeatures.Select(f => f.Attributes.Id).ToList();
 
             return Task.FromResult(GetDeleted(existingAggregates, newObjectIds)
-                .Concat(GetCreated(newVersion.Features, oldObjectIds))
-                .Concat(GetModified(existingAggregates, newVersion.Features, newObjectIds, oldObjectIds)));
+                .Concat(GetCreated(newFeatures, oldObjectIds))
+                .Concat(GetModified(existingAggregates, newFeatures, newObjectIds, oldObjectIds)));
         }
        
         private IEnumerable<FeaturePair<LineString, ExampleAttributes>> GetModified(IEnumerable<Aggregate<Feature<LineString, ExampleAttributes>>> existingAggregates, IEnumerable<Feature<LineString, ExampleAttributes>> newFeatures, IEnumerable<int> newIds, IEnumerable<int> oldIds)

@@ -4,10 +4,10 @@ using PhdReferenceImpl.Models;
 
 namespace PhdReferenceImpl.MessageBus
 {
-    public interface IMessageBus
+    public interface IMessageBus<TEventData>
     {
-        void Subscribe(Guid datasetId, Action<Event> callback);
+        void Subscribe(Guid datasetId, Action<Event<TEventData>> callback);
 
-        void Publish(Guid datasetId, IEnumerable<Event> events);
+        void Publish(Guid datasetId, IEnumerable<Event<TEventData>> events);
     }
 }

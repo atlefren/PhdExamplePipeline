@@ -6,6 +6,6 @@ namespace PhdReferenceImpl.FeatureDiffer
 {
     public interface IFeatureDiffer<TGeometry, TAttributes> where TGeometry : IGeometry
     {
-        IEnumerable<FeatureDiff<TGeometry, TAttributes>> GetDiffs(IEnumerable<FeaturePair<TGeometry, TAttributes>> pairs);
+        IEnumerable<Event<FeatureDiff>> GetDiffs(IEnumerable<FeaturePair<TGeometry, TAttributes>> pairs);
     }
 }

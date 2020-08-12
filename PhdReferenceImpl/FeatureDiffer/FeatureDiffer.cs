@@ -22,18 +22,21 @@ namespace PhdReferenceImpl.FeatureDiffer
     {
         private readonly JsonDiffPatch _diffPatch = new JsonDiffPatch();
         
-        public IEnumerable<FeatureDiff<TGeometry, TAttributes>> GetDiffs(IEnumerable<FeaturePair<TGeometry, TAttributes>> pairs)
+        public IEnumerable<Event<FeatureDiff>> GetDiffs(IEnumerable<FeaturePair<TGeometry, TAttributes>> pairs)
             => pairs
                 .Where(IsNotNoop)
                 .Select(CreateDiff);
         
-        private FeatureDiff<TGeometry, TAttributes> CreateDiff(FeaturePair<TGeometry, TAttributes> pair)
-            => new FeatureDiff<TGeometry, TAttributes>()
+        private Event<FeatureDiff> CreateDiff(FeaturePair<TGeometry, TAttributes> pair)
+            => new Event<FeatureDiff>()
             {
                 AggregateId = pair.Guid,
                 Version = pair.Version,
-                Attributes = DiffAttributes(pair),
-                Geometry = DiffGeometry(pair)
+                EventData = new FeatureDiff()
+                {
+                    AttributeDiff = DiffAttributes(pair),
+                    GeometryDiff = DiffGeometry(pair)
+                }
             };
 
         private string DiffAttributes(FeaturePair<TGeometry, TAttributes> pair)

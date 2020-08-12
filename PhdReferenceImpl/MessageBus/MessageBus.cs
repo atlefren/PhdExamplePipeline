@@ -8,20 +8,20 @@ namespace PhdReferenceImpl.MessageBus
     /*
      * A simple implementation of a messaging service (pubsub) for demonstration purposes
      */
-    public class MessageBus: IMessageBus
+    public class MessageBus<TDiff> : IMessageBus<TDiff>
     {
-        private readonly Dictionary<Guid, List<Action<Event>>> _subscribers = new Dictionary<Guid, List<Action<Event>>>();
+        private readonly Dictionary<Guid, List<Action<Event<TDiff>>>> _subscribers = new Dictionary<Guid, List<Action<Event<TDiff>>>>();
 
-        public void Subscribe(Guid datasetId, Action<Event> callback)
+        public void Subscribe(Guid datasetId, Action<Event<TDiff>> callback)
         {
             if (!_subscribers.ContainsKey(datasetId))
             {
-                _subscribers[datasetId] = new List<Action<Event>>();
+                _subscribers[datasetId] = new List<Action<Event<TDiff>>>();
             }
             _subscribers[datasetId].Add(callback);
         }
 
-        public void Publish(Guid datasetId, IEnumerable<Event> events)
+        public void Publish(Guid datasetId, IEnumerable<Event<TDiff>> events)
         {
             if (_subscribers.ContainsKey(datasetId))
             {
