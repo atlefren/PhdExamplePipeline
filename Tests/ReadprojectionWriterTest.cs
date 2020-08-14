@@ -10,10 +10,10 @@ using NetTopologySuite.IO;
 using NUnit.Framework;
 using PhdReferenceImpl;
 using PhdReferenceImpl.Database;
-using PhdReferenceImpl.EventSourceApi;
-using PhdReferenceImpl.Example;
+using PhdReferenceImpl.EventStoreApi;
 using PhdReferenceImpl.MessageBus;
 using PhdReferenceImpl.Models;
+using Tests.ExampleImplementation;
 
 
 namespace Tests
@@ -22,10 +22,11 @@ namespace Tests
     public class ReadprojectionWriterTest
     {
         private ReadProjectionWriter<Polygon, ExampleAttributes, Polygon, ExampleAttributes> _readProjectionWriter;
+        private ReadProjectionWriter<Polygon, ExampleAttributes, Polygon, ExampleAttributes> _readProjectionWriterWithFilter;
         private ReadProjectionWriter<Polygon, ExampleAttributes, Point, ExampleAttributes2> _readProjectionWriterWithTransform;
         
         private IMessageBus<FeatureDiff> _messageBus;
-        private IEventSourceApi<Feature<Polygon, ExampleAttributes>, FeatureDiff> _eventSourceApi;
+        private IEventStoreApi<Feature<Polygon, ExampleAttributes>, FeatureDiff> _eventStoreApi;
         private IDatabaseEngine _databaseEngine;
 
         private readonly Guid _datasetId = Guid.NewGuid();
@@ -33,13 +34,15 @@ namespace Tests
         [SetUp]
         public void Setup()
         {
-            _eventSourceApi = A.Fake<IEventSourceApi<Feature<Polygon, ExampleAttributes>, FeatureDiff>>();
+            _eventStoreApi = A.Fake<IEventStoreApi<Feature<Polygon, ExampleAttributes>, FeatureDiff>>();
             var messageBus = new MessageBus<FeatureDiff>();
             _messageBus = A.Fake<IMessageBus<FeatureDiff>>(x => x.Wrapping(messageBus));
 
             _databaseEngine = A.Fake<IDatabaseEngine>();
-            _readProjectionWriter = new ReadProjectionWriter<Polygon, ExampleAttributes, Polygon, ExampleAttributes>(_messageBus, _databaseEngine, _eventSourceApi, PassTrough);
-            _readProjectionWriterWithTransform = new ReadProjectionWriter<Polygon, ExampleAttributes, Point, ExampleAttributes2>(_messageBus, _databaseEngine, _eventSourceApi, Transform);
+            _readProjectionWriter = new ReadProjectionWriter<Polygon, ExampleAttributes, Polygon, ExampleAttributes>(_messageBus, _databaseEngine, _eventStoreApi, PassTrough);
+            
+            _readProjectionWriterWithTransform = new ReadProjectionWriter<Polygon, ExampleAttributes, Point, ExampleAttributes2>(_messageBus, _databaseEngine, _eventStoreApi, Transform);
+            _readProjectionWriterWithFilter = new ReadProjectionWriter<Polygon, ExampleAttributes, Polygon, ExampleAttributes>(_messageBus, _databaseEngine, _eventStoreApi, PassTrough, ExampleFilter);
         }
 
         [Test]
@@ -163,10 +166,62 @@ namespace Tests
                 A<IEnumerable<Cell>>.That.Matches(c => CheckCellCreation(c, transformedFeature, @event.AggregateId)))).MustHaveHappenedOnceExactly();
         }
 
+        [Test]
+        public async Task TestCreateEventWithFilterPass()
+        {
+            var @event = new Event<FeatureDiff>()
+            {
+                AggregateId = Guid.NewGuid(),
+                Operation = Operation.Create,
+                Version = 1
+            };
+
+            var feature = new Feature<Polygon, ExampleAttributes>()
+            {
+                Geometry = GetGeometry<Polygon>("POLYGON((0 0, 0 1, 1 1, 1 0, 0 0))"),
+                Attributes = new ExampleAttributes() { Id = 1, Name = "Feature 1" }
+            };
+
+            MockEventSourceApiResponse(@event, feature);
+
+            await _readProjectionWriterWithFilter.CreateReadProjection(_datasetId);
+            _messageBus.Publish(_datasetId, new List<Event<FeatureDiff>>() { @event });
+
+            A.CallTo(() => _databaseEngine.Upsert(
+                A<string>.That.IsEqualTo(_datasetId.ToString()),
+                A<IEnumerable<Cell>>.That.Matches(c => CheckCellCreation(c, feature, @event.AggregateId)))).MustHaveHappenedOnceExactly();
+        }
+
+        [Test]
+        public async Task TestCreateEventWithFilterNoPass()
+        {
+            var @event = new Event<FeatureDiff>()
+            {
+                AggregateId = Guid.NewGuid(),
+                Operation = Operation.Create,
+                Version = 1
+            };
+
+            var feature = new Feature<Polygon, ExampleAttributes>()
+            {
+                Geometry = GetGeometry<Polygon>("POLYGON((0 0, 0 1, 1 1, 1 0, 0 0))"),
+                Attributes = new ExampleAttributes() { Id = 1, Name = "reject" }
+            };
+
+            MockEventSourceApiResponse(@event, feature);
+
+            await _readProjectionWriterWithFilter.CreateReadProjection(_datasetId);
+            _messageBus.Publish(_datasetId, new List<Event<FeatureDiff>>() { @event });
+
+            A.CallTo(() => _databaseEngine.Upsert(
+                A<string>._,
+                A<IEnumerable<Cell>>._)).MustNotHaveHappened();
+        }
+
 
         private void MockEventSourceApiResponse(Event<FeatureDiff> @event, Feature<Polygon, ExampleAttributes> feature)
         {
-            A.CallTo(() => _eventSourceApi.GetAggregateAtLatestVersion(A<Guid>.That.IsEqualTo(@event.AggregateId)))
+            A.CallTo(() => _eventStoreApi.GetAggregateAtLatestVersion(A<Guid>.That.IsEqualTo(_datasetId), A<Guid>.That.IsEqualTo(@event.AggregateId)))
                 .Returns(new Aggregate<Feature<Polygon, ExampleAttributes>>()
                 {
                     Id = @event.AggregateId,
@@ -240,5 +295,10 @@ namespace Tests
                   Description = $"Description of {f.Attributes.Name}"
               }
             };
+
+        private static Task<bool> ExampleFilter(Feature<Polygon, ExampleAttributes> feature)
+        {
+            return Task.FromResult(feature.Attributes.Name != "reject");
+        }
     }
 }

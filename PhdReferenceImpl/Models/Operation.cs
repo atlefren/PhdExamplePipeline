@@ -5,6 +5,6 @@
         Create,
         Delete,
         Modify,
-        NoOp
+        NoOperation
     }
 }

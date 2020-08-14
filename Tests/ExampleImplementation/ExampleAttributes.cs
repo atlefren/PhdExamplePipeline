@@ -1,4 +1,4 @@
-﻿namespace PhdReferenceImpl.Example
+﻿namespace Tests.ExampleImplementation
 {
     public class ExampleAttributes
     {

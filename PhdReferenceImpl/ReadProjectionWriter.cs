@@ -7,10 +7,10 @@ using GeoAPI.Geometries;
 using GeoAPI.IO;
 using NetTopologySuite.IO;
 using PhdReferenceImpl.Database;
-using PhdReferenceImpl.EventSourceApi;
+using PhdReferenceImpl.EventStoreApi;
 using PhdReferenceImpl.MessageBus;
 using PhdReferenceImpl.Models;
-using PhdReferenceImpl.ReadProjectionHandler;
+using PhdReferenceImpl.Util;
 
 namespace PhdReferenceImpl
 {
@@ -23,7 +23,7 @@ namespace PhdReferenceImpl
     {
         private readonly IMessageBus<FeatureDiff> _messageBus;
         private readonly IDatabaseEngine _databaseEngine;
-        private readonly IEventSourceApi<Feature<TInputGeometry, TInputAttributes>, FeatureDiff> _eventSourceApi;
+        private readonly IEventStoreApi<Feature<TInputGeometry, TInputAttributes>, FeatureDiff> _eventStoreApi;
 
         private const string AggregateIdColumnName = "AggregateId";
         private const string GeometryColumnName = "Geometry";
@@ -31,41 +31,50 @@ namespace PhdReferenceImpl
         private readonly Func<Feature<TInputGeometry, TInputAttributes>, Feature<TOutputGeometry, TOutputAttributes>>
             _transformFeature;
 
+        private readonly Func<Feature<TInputGeometry, TInputAttributes>, Task<bool>> _filterFeature;
+
         public ReadProjectionWriter(
             IMessageBus<FeatureDiff> messageBus,
             IDatabaseEngine databaseEngine,
-            IEventSourceApi<Feature<TInputGeometry, TInputAttributes>, FeatureDiff> eventSourceApi, 
-            Func<Feature<TInputGeometry, TInputAttributes>, Feature<TOutputGeometry, TOutputAttributes>> transformFeature)
+            IEventStoreApi<Feature<TInputGeometry, TInputAttributes>, FeatureDiff> eventStoreApi, 
+            Func<Feature<TInputGeometry, TInputAttributes>, Feature<TOutputGeometry, TOutputAttributes>> transformFeature,
+            Func< Feature<TInputGeometry, TInputAttributes>, Task<bool>> filterFeature = null
+            )
         {
             _messageBus = messageBus;
             _databaseEngine = databaseEngine;
-            _eventSourceApi = eventSourceApi;
+            _eventStoreApi = eventStoreApi;
             _transformFeature = transformFeature;
+            _filterFeature = filterFeature;
         }
 
         public async Task CreateReadProjection(Guid datasetId)
         {
             var tableName = GetTableName(datasetId);
             await _databaseEngine.CreateTable(tableName, GetColumns());
-            _messageBus.Subscribe(datasetId, (@event => { Update(tableName, @event); }));
+            _messageBus.Subscribe(datasetId, (@event => { Update(datasetId, tableName, @event); }));
         }
 
-        private Task Update(string tableName, Event<FeatureDiff> @event)
+        private Task Update(Guid datasetId, string tableName, Event<FeatureDiff> @event)
             => @event.Operation switch
             {
                 Operation.Delete => Delete(tableName, @event),
-                Operation.Create => Upsert(tableName, @event),
-                Operation.Modify => Upsert(tableName, @event),
+                Operation.Create => Upsert(datasetId, tableName, @event),
+                Operation.Modify => Upsert(datasetId, tableName, @event),
                 _ => throw new Exception("Unsupported operation")
             };
 
         private Task Delete(string tableName, Event<FeatureDiff> @event)
             => _databaseEngine.Delete(tableName, @event.AggregateId);
 
-        private async Task Upsert(string tableName, Event<FeatureDiff> @event)
+        private async Task Upsert(Guid datasetId, string tableName, Event<FeatureDiff> @event)
         {
-            var aggregate = await _eventSourceApi.GetAggregateAtLatestVersion(@event.AggregateId);
-            var a  = aggregate.Data;
+            var aggregate = await _eventStoreApi.GetAggregateAtLatestVersion(datasetId, @event.AggregateId);
+            if (_filterFeature != null &&  ! (await _filterFeature(aggregate.Data)))
+            {
+                return;
+            }
+
             await _databaseEngine.Upsert(tableName, GetRowData(aggregate.Id, _transformFeature(aggregate.Data)));
         }
 
@@ -83,8 +92,8 @@ namespace PhdReferenceImpl
             => new List<Column>()
             {
                 new Column(){Name = AggregateIdColumnName, Type = "guid"},
-                new Column(){Name = GeometryColumnName, Type = Helpers.GetGeometryType<TOutputGeometry>()}
-            }.Concat(Helpers.GetAttributeColumns<TOutputAttributes>()).ToList();
+                new Column(){Name = GeometryColumnName, Type = ReflectionHelpers.GetGeometryType<TOutputGeometry>()}
+            }.Concat(ReflectionHelpers.GetAttributeColumns<TOutputAttributes>()).ToList();
 
         private static IEnumerable<Cell> MapAttributes(TOutputAttributes attributes)
             => TypeDescriptor.GetProperties(attributes).Cast<PropertyDescriptor>().Select(p => new Cell()

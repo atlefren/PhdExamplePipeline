@@ -8,19 +8,18 @@ using NetTopologySuite.Geometries;
 using NetTopologySuite.IO;
 using NUnit.Framework;
 using PhdReferenceImpl;
-using PhdReferenceImpl.EventSourceApi;
-using PhdReferenceImpl.Example;
+using PhdReferenceImpl.EventStoreApi;
 using PhdReferenceImpl.FeatureDiffer;
 using PhdReferenceImpl.MessageBus;
 using PhdReferenceImpl.Models;
-using PhdReferenceImpl.ReadProjectionHandler;
+using Tests.ExampleImplementation;
 
 namespace Tests
 {
     public class EventCreationTest
     {
         private readonly ExampleChangeDetetctor _changeDetector = new ExampleChangeDetetctor();
-        private IEventSourceApi<Feature<LineString, ExampleAttributes>, FeatureDiff> _eventSourceApi;
+        private IEventStoreApi<Feature<LineString, ExampleAttributes>, FeatureDiff> _eventStoreApi;
         private IMessageBus<FeatureDiff> _messageBus;
         private EventSourceConverter<LineString, ExampleAttributes> _converter;
         
@@ -29,22 +28,21 @@ namespace Tests
         [SetUp]
         public void Setup()
         {
-            _eventSourceApi = A.Fake<IEventSourceApi<Feature<LineString, ExampleAttributes>, FeatureDiff>>();
+            _eventStoreApi = A.Fake<IEventStoreApi<Feature<LineString, ExampleAttributes>, FeatureDiff>>();
             _messageBus = new MessageBus<FeatureDiff>();
-            _converter = new EventSourceConverter<LineString, ExampleAttributes>(_changeDetector, _eventSourceApi, new FeatureDiffer<LineString, ExampleAttributes>(), _messageBus);
+            _converter = new EventSourceConverter<LineString, ExampleAttributes>(_changeDetector, _eventStoreApi, _messageBus);
         }
 
         [Test]
         public async Task TestWriteVersion1ToEventStore()
         {
-            A.CallTo(() => _eventSourceApi.GetDatasetAtLatestVersion(A<Guid>.That.IsEqualTo(_datasetId))).Returns(
+            A.CallTo(() => _eventStoreApi.GetAggregatesAtLatestVersion(A<Guid>.That.IsEqualTo(_datasetId))).Returns(
                  new List<Aggregate<Feature<LineString, ExampleAttributes>>>()
                 );
 
-            IEnumerable<Event<FeatureDiff>> events = new List<Event<FeatureDiff>>();
-            A.CallTo(() => _eventSourceApi.SaveEvents(A<IEnumerable<Event<FeatureDiff>>>._))
-                .Invokes(
-                    (IEnumerable<Event<FeatureDiff>> x) => events = x);
+            var events = new List<Event<FeatureDiff>>();
+            A.CallTo(() => _eventStoreApi.SaveEvent(A<Guid>.That.IsEqualTo(_datasetId), A<Event<FeatureDiff>>._))
+                .Invokes((Guid id, Event<FeatureDiff> x) => events.Add(x));
 
             await _converter.UpdateDataset(_datasetId, _version1);
             Assert.AreEqual(6, events.Count());
@@ -53,7 +51,7 @@ namespace Tests
         [Test]
         public async Task TestWriteVersion2ToEventStore()
         {
-            A.CallTo(() => _eventSourceApi.GetDatasetAtLatestVersion(A<Guid>.That.IsEqualTo(_datasetId))).Returns(
+            A.CallTo(() => _eventStoreApi.GetAggregatesAtLatestVersion(A<Guid>.That.IsEqualTo(_datasetId))).Returns(
                 _version1.Select(f => new Aggregate<Feature<LineString, ExampleAttributes>>()
                 {
                     Data = f,
@@ -61,11 +59,10 @@ namespace Tests
                     Id = new Guid()
                 }));
 
-            IEnumerable<Event<FeatureDiff>> events = new List<Event<FeatureDiff>>();
-            
-            A.CallTo(() => _eventSourceApi.SaveEvents(A<IEnumerable<Event<FeatureDiff>>>._))
+            var events = new List<Event<FeatureDiff>>();
+            A.CallTo(() => _eventStoreApi.SaveEvent(A<Guid>.That.IsEqualTo(_datasetId), A<Event<FeatureDiff>>._))
                 .Invokes(
-                    (IEnumerable<Event<FeatureDiff>> x) => events = x);
+                    (Guid id, Event<FeatureDiff> x) => events.Add(x));
 
             await _converter.UpdateDataset(_datasetId, _version2);
             Assert.AreEqual(6, events.Count());

@@ -11,11 +11,11 @@ namespace PhdReferenceImpl.ChangeDetector
      *
      * An example implementation is found in Example/ExampleChangeDetetctor.cs
      */
-    public interface IChangeDetector<TGeometry, TAttributes> where TGeometry : IGeometry
-    {
-        public Task<IEnumerable<FeaturePair<TGeometry, TAttributes>>> FindChanges(
-            IEnumerable<Aggregate<Feature<TGeometry, TAttributes>>> existingVersion,
-            IEnumerable<Feature<TGeometry, TAttributes>> newVersion
-        );
-    }
+public interface IChangeDetector<TGeometry, TAttributes> where TGeometry : IGeometry
+{
+    public Task<IEnumerable<FeaturePair<TGeometry, TAttributes>>> FindChanges(
+        IEnumerable<Aggregate<Feature<TGeometry, TAttributes>>> existingVersion,
+        IEnumerable<Feature<TGeometry, TAttributes>> newVersion
+    );
+}
 }

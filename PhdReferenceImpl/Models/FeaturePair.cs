@@ -8,7 +8,7 @@ namespace PhdReferenceImpl.Models
         public Aggregate<Feature<TGeometry, TAttributes>> ExistingAggregate;
         public Feature<TGeometry, TAttributes> NewFeature;
         public Operation Operation;
-        public Guid Guid { get; set; }
+        public Guid AggregateId { get; set; }
         public long Version { get; set; }
     }
 }

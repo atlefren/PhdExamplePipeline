@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using PhdReferenceImpl.Models;
 
 namespace PhdReferenceImpl.MessageBus
@@ -23,18 +22,21 @@ namespace PhdReferenceImpl.MessageBus
 
         public void Publish(Guid datasetId, IEnumerable<Event<TDiff>> events)
         {
-            if (_subscribers.ContainsKey(datasetId))
+            foreach (var @event in events)
             {
-                var eventList = events.ToList();
-                foreach (var callback in _subscribers[datasetId])
-                {
-                    foreach (var @event in eventList)
-                    {
-                        callback(@event);
-                    }
-                }
+                Publish(datasetId, @event);
             }
         }
 
+        public void Publish(Guid datasetId, Event<TDiff> @event)
+        {
+            if (_subscribers.ContainsKey(datasetId))
+            {
+                foreach (var callback in _subscribers[datasetId])
+                {
+                    callback(@event);
+                }
+            }
+        }
     }
 }

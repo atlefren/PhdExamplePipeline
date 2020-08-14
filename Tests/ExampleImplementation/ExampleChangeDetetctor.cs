@@ -6,7 +6,7 @@ using NetTopologySuite.Geometries;
 using PhdReferenceImpl.ChangeDetector;
 using PhdReferenceImpl.Models;
 
-namespace PhdReferenceImpl.Example
+namespace Tests.ExampleImplementation
 {
     /*
      * Example implementation of IChangeDetector.
@@ -44,7 +44,7 @@ namespace PhdReferenceImpl.Example
                         NewFeature = newFeatures.FirstOrDefault(f => f.Attributes.Id == id),
                         Operation = Operation.Modify,
                         Version = aggregate.Version + 1,
-                        Guid = aggregate.Id
+                        AggregateId = aggregate.Id
                     };
                 }).Where(p => !AreEqual(p.ExistingAggregate.Data, p.NewFeature));
 
@@ -56,7 +56,7 @@ namespace PhdReferenceImpl.Example
                 {
                     ExistingAggregate = null,
                     NewFeature = createdFeature,
-                    Guid = new Guid(),
+                    AggregateId = new Guid(),
                     Version = 1,
                     Operation = Operation.Create
                 });
@@ -68,7 +68,7 @@ namespace PhdReferenceImpl.Example
                 {
                     ExistingAggregate = deletedAggregate,
                     NewFeature = null,
-                    Guid = deletedAggregate.Id,
+                    AggregateId = deletedAggregate.Id,
                     Version = deletedAggregate.Version + 1,
                     Operation = Operation.Delete
                 });

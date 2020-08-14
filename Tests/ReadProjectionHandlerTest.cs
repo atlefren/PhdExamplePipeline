@@ -7,10 +7,7 @@ using NetTopologySuite.Geometries;
 using NetTopologySuite.IO;
 using NUnit.Framework;
 using PhdReferenceImpl.Database;
-using PhdReferenceImpl.EventSourceApi;
-using PhdReferenceImpl.Example;
 using PhdReferenceImpl.Models;
-using PhdReferenceImpl.ReadProjectionHandler;
 
 namespace Tests
 {

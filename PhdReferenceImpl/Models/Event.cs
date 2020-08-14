@@ -8,5 +8,6 @@ namespace PhdReferenceImpl.Models
         public Guid AggregateId { get; set; }
         public long Version { get; set; }
         public TEventData EventData { get; set; }
+        public DateTime Timestamp { get; set; }
     }
 }

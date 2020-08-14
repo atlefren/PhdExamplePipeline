@@ -4,9 +4,9 @@ using System.Linq;
 using GeoAPI.Geometries;
 using PhdReferenceImpl.Database;
 
-namespace PhdReferenceImpl.ReadProjectionHandler
+namespace PhdReferenceImpl.Util
 {
-    public class Helpers
+    public class ReflectionHelpers
     {
         public static IEnumerable<Column> GetAttributeColumns<TAttributes>()
             => typeof(TAttributes)

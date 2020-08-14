@@ -9,5 +9,7 @@ namespace PhdReferenceImpl.MessageBus
         void Subscribe(Guid datasetId, Action<Event<TEventData>> callback);
 
         void Publish(Guid datasetId, IEnumerable<Event<TEventData>> events);
+
+        void Publish(Guid datasetId, Event<TEventData> @event);
     }
 }

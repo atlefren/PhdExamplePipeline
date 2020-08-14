@@ -4,7 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using GeoAPI.Geometries;
 using PhdReferenceImpl.ChangeDetector;
-using PhdReferenceImpl.EventSourceApi;
+using PhdReferenceImpl.EventStoreApi;
 using PhdReferenceImpl.FeatureDiffer;
 using PhdReferenceImpl.MessageBus;
 using PhdReferenceImpl.Models;
@@ -25,36 +25,56 @@ namespace PhdReferenceImpl
         where TGeometry : IGeometry
     {
         private readonly IChangeDetector<TGeometry, TAttributes> _changeDetector;
-        private readonly IEventSourceApi<Feature<TGeometry, TAttributes>, FeatureDiff> _eventSourceApi;
-        private readonly IFeatureDiffer<TGeometry, TAttributes> _featureDiffer;
+        private readonly IEventStoreApi<Feature<TGeometry, TAttributes>, FeatureDiff> _eventStoreApi;
+        
         private readonly IMessageBus<FeatureDiff> _messageBus;
+
+        private readonly FeatureDiffPatch<TGeometry, TAttributes> _diffPatch = new FeatureDiffPatch<TGeometry, TAttributes>();
 
         public EventSourceConverter(
             IChangeDetector<TGeometry, TAttributes> changeDetector,
-            IEventSourceApi<Feature<TGeometry, TAttributes>, FeatureDiff> eventSourceApi,
-            IFeatureDiffer<TGeometry, TAttributes> featureDiffer,
+            IEventStoreApi<Feature<TGeometry, TAttributes>, FeatureDiff> eventStoreApi,
             IMessageBus<FeatureDiff> messageBus)
         {
             _changeDetector = changeDetector;
-            _eventSourceApi = eventSourceApi;
-            _featureDiffer = featureDiffer;
+            _eventStoreApi = eventStoreApi;
             _messageBus = messageBus;
         }
 
         public async Task UpdateDataset(Guid datasetId, IEnumerable<Feature<TGeometry, TAttributes>> newFeatures)
         {
             //Get current version (version n) of the dataset
-            var oldFeatures = await _eventSourceApi.GetDatasetAtLatestVersion(datasetId);
+            var oldFeatures = await _eventStoreApi.GetAggregatesAtLatestVersion(datasetId);
 
             //Use the new and old features to generate a list of pairs with corresponding action
-            var changes = await  _changeDetector.FindChanges(oldFeatures, newFeatures);
+            var changes = await _changeDetector.FindChanges(oldFeatures, newFeatures);
 
             //Create a diff for each pair that is changed, created, or deleted
-            var events = _featureDiffer.GetDiffs(changes).ToList();
-            
-            await _eventSourceApi.SaveEvents(events);
+            var events = GetDiffs(changes).ToList();
 
-            _messageBus.Publish(datasetId, events);
+            await Task.WhenAll(events.Select(@event => StoreEvent(datasetId, @event)).ToArray());
         }
+
+        private async Task StoreEvent(Guid datasetId, Event<FeatureDiff> @event)
+        {
+            await _eventStoreApi.SaveEvent(datasetId, @event);
+            _messageBus.Publish(datasetId, @event);
+        }
+
+        public IEnumerable<Event<FeatureDiff>> GetDiffs(IEnumerable<FeaturePair<TGeometry, TAttributes>> pairs)
+            => pairs
+                .Where(IsNotNoop)
+                .Select(CreateDiff);
+
+        private Event<FeatureDiff> CreateDiff(FeaturePair<TGeometry, TAttributes> pair)
+            => new Event<FeatureDiff>()
+            {
+                AggregateId = pair.AggregateId,
+                Version = pair.Version,
+                EventData = _diffPatch.Diff(pair.ExistingAggregate?.Data, pair.NewFeature)
+            };
+
+        private static bool IsNotNoop(FeaturePair<TGeometry, TAttributes> pair)
+            => pair.Operation != Operation.NoOperation;
     }
 }
