@@ -31,52 +31,78 @@ namespace PhdReferenceImpl
         private readonly Func<Feature<TInputGeometry, TInputAttributes>, Feature<TOutputGeometry, TOutputAttributes>>
             _transformFeature;
 
-        private readonly Func<Feature<TInputGeometry, TInputAttributes>, Task<bool>> _filterFeature;
+        private readonly Func<Guid, Feature<TInputGeometry, TInputAttributes>, Task<bool>> _shouldKeepFeature;
 
         public ReadProjectionWriter(
             IMessageBus<FeatureDiff> messageBus,
             IDatabaseEngine databaseEngine,
             IEventStoreApi<Feature<TInputGeometry, TInputAttributes>, FeatureDiff> eventStoreApi, 
             Func<Feature<TInputGeometry, TInputAttributes>, Feature<TOutputGeometry, TOutputAttributes>> transformFeature,
-            Func< Feature<TInputGeometry, TInputAttributes>, Task<bool>> filterFeature = null
+            Func<Guid, Feature<TInputGeometry, TInputAttributes>, Task<bool>> shouldKeepFeature = null
             )
         {
             _messageBus = messageBus;
             _databaseEngine = databaseEngine;
             _eventStoreApi = eventStoreApi;
             _transformFeature = transformFeature;
-            _filterFeature = filterFeature;
+            _shouldKeepFeature = shouldKeepFeature;
         }
 
         public async Task CreateReadProjection(Guid datasetId)
         {
             var tableName = GetTableName(datasetId);
             await _databaseEngine.CreateTable(tableName, GetColumns());
-            _messageBus.Subscribe(datasetId, (@event => { Update(datasetId, tableName, @event); }));
+            await InsertExistingFeatures(datasetId, tableName);
+            
+            _messageBus.Subscribe(datasetId, @event =>
+            {
+                Update(datasetId, tableName, @event);
+            });
         }
 
         private Task Update(Guid datasetId, string tableName, Event<FeatureDiff> @event)
             => @event.Operation switch
             {
-                Operation.Delete => Delete(tableName, @event),
-                Operation.Create => Upsert(datasetId, tableName, @event),
-                Operation.Modify => Upsert(datasetId, tableName, @event),
+                Operation.Delete => Delete(datasetId, tableName, @event),
+                Operation.Create => Create(datasetId, tableName, @event),
+                Operation.Modify => Modify(datasetId, tableName, @event),
                 _ => throw new Exception("Unsupported operation")
             };
 
-        private Task Delete(string tableName, Event<FeatureDiff> @event)
+        private Task Delete(Guid datasetId, string tableName, Event<FeatureDiff> @event)
             => _databaseEngine.Delete(tableName, @event.AggregateId);
 
-        private async Task Upsert(Guid datasetId, string tableName, Event<FeatureDiff> @event)
-        {
-            var aggregate = await _eventStoreApi.GetAggregateAtLatestVersion(datasetId, @event.AggregateId);
-            if (_filterFeature != null &&  ! (await _filterFeature(aggregate.Data)))
-            {
-                return;
-            }
+        private Task Create(Guid datasetId, string tableName, Event<FeatureDiff> @event)
+            => Upsert(datasetId, tableName, @event);
 
-            await _databaseEngine.Upsert(tableName, GetRowData(aggregate.Id, _transformFeature(aggregate.Data)));
+        private Task Modify(Guid datasetId, string tableName, Event<FeatureDiff> @event)
+            => Upsert(datasetId, tableName, @event);
+
+        private async Task InsertExistingFeatures(Guid datasetId, string tableName)
+        {
+            var aggregates = await _eventStoreApi.GetAggregatesAtLatestVersion(datasetId);
+            await Task.WhenAll(aggregates.Select(aggregate => Upsert(datasetId, tableName, aggregate)));
         }
+
+        private async Task Upsert(Guid datasetId, string tableName, Event<FeatureDiff> @event)
+            => await Upsert(datasetId, tableName, await _eventStoreApi.GetAggregateAtLatestVersion(datasetId, @event.AggregateId));
+        
+private async Task Upsert(
+    Guid datasetId,
+    string tableName,
+    Aggregate<Feature<TInputGeometry, TInputAttributes>> aggregate)
+{
+    if (!await ShouldKeep(datasetId, aggregate.Data)) {
+        return;
+    }
+
+    var transformedFeature = _transformFeature(aggregate.Data);
+    var rowData = GetRowData(aggregate.Id, transformedFeature);
+    await _databaseEngine.Upsert(tableName, rowData);
+}
+
+private async Task<bool> ShouldKeep(Guid datasetId, Feature<TInputGeometry, TInputAttributes> feature)
+    => _shouldKeepFeature == null || (await _shouldKeepFeature(datasetId, feature));
 
         private static string GetTableName(Guid datasetId)
             => datasetId.ToString();
