@@ -9,7 +9,6 @@ using NetTopologySuite.IO;
 using NUnit.Framework;
 using PhdReferenceImpl;
 using PhdReferenceImpl.EventStoreApi;
-using PhdReferenceImpl.FeatureDiffer;
 using PhdReferenceImpl.MessageBus;
 using PhdReferenceImpl.Models;
 using Tests.ExampleImplementation;

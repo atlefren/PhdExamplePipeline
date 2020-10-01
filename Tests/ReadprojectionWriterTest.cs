@@ -4,7 +4,6 @@ using System.Linq;
 using System.Threading.Tasks;
 using FakeItEasy;
 using GeoAPI.Geometries;
-using GeoAPI.IO;
 using NetTopologySuite.Geometries;
 using NetTopologySuite.IO;
 using NUnit.Framework;

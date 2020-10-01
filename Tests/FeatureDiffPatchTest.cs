@@ -1,5 +1,4 @@
-﻿using System.Xml.Xsl;
-using NetTopologySuite.Geometries;
+﻿using NetTopologySuite.Geometries;
 using NUnit.Framework;
 using PhdReferenceImpl.FeatureDiffer;
 using PhdReferenceImpl.Models;
